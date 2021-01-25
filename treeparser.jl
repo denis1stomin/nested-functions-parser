@@ -76,6 +76,7 @@ function parse_function_expression(exp::AbstractString)::Functor
 
     name = SubString(exp, 1, idx - 1)
     str_pending_exp = SubString(exp, idx + 1, lastindex(exp))
+    handled_exp_buf = name * '('
     log("func name : " * name * ";          pending exp after func name : " * str_pending_exp)
     debug_pause()
 
@@ -94,18 +95,19 @@ function parse_function_expression(exp::AbstractString)::Functor
         end
 
         if isnothing(first_nested_opener_idx) || first_closer_idx < first_nested_opener_idx
-            log("  --- found a closer symbol at idx :", first_closer_idx)
+            log("  --- found a closer symbol at idx : ", first_closer_idx)
             if (first_closer_idx > 1)
                 str_arguments = SubString(str_pending_exp, 1, first_closer_idx - 1)
+                handled_exp_buf = handled_exp_buf * str_arguments
                 log("  str arguments : '" * str_arguments * "'")
                 arg_part = parse_function_arguments(str_arguments)
                 log("  parsed arguments part : ", arg_part)
                 append!(arr_arguments, arg_part)
             end
             log("  all parsed arguments : ", arr_arguments)
-                
-            func =  Functor(
-                name, arr_arguments, name * "(" * SubString(str_pending_exp, 1, first_closer_idx))
+            
+            handled_exp_buf = handled_exp_buf * ')'
+            func =  Functor(name, arr_arguments, handled_exp_buf)
             log("  returning functor : ", func)
             return func
         else
@@ -128,7 +130,10 @@ function parse_function_expression(exp::AbstractString)::Functor
             # remove handled part
             # TODO : bug here in the case we have arguments after nested function
             str_pending_exp = replace(str_pending_exp, str_before_nested_func_name => "")
+            handled_exp_buf = handled_exp_buf * str_before_nested_func_name
             str_pending_exp = replace(str_pending_exp, nested_func.func_string => "")
+            handled_exp_buf = handled_exp_buf * nested_func.func_string
+
             log("  new pending exp : '" * str_pending_exp * "'")
             append!(arr_arguments, [nested_func])
 
