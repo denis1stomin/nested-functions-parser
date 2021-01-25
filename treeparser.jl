@@ -5,10 +5,15 @@ include("functionsdefinitions.jl")
 SINGLE_FUNC_REGEX = r"(([^\(\)\s\,]+)\(([^\(\)]*?)\))"
 FUNC_NAME_REGEX = r"([^\s\,\(\)]+)\("
 
-log_verbosity = 1
+log_verbosity = 0
 function log(args...)
     if (log_verbosity > 0)
         println(args...)
+    end
+end
+function debug_pause()
+    if (log_verbosity > 0)
+        read(stdin, Char)
     end
 end
 
@@ -18,11 +23,16 @@ struct Functor
     func_string::AbstractString
 end
 
-function invoke(functor::Functor)
+function invoke(functor::Functor, operands::Array{Any})
     fsym = Symbol(functor.func_name)
-    f = getfield(FunctionsDefinitions, fsym)
+    f = getfield(Main, fsym)
 
-    return f(functor.operands...)
+    ops = operands
+    if isnothing(ops)
+        ops = functor.operands
+    end
+
+    return f(ops...)
 end
 
 function parse_function_arguments(str_args::AbstractString)::Array{Any}
@@ -38,11 +48,11 @@ end
 
 function simple_expression_check(exp::AbstractString)
     exp = strip(exp, ' ')
-    fail_check(e) = throw(ArgumentError("Looks like a wrong expression : '" * e * "'"))
+    fail_check(e) = throw(ArgumentError("Expression '" * e * "' does not look like valid nested functions."))
 
     # starts with function name
     root_func_idx = findfirst(FUNC_NAME_REGEX, exp)
-    root_func_idx.start === 1 || fail_check(exp)
+    ! isnothing(root_func_idx) && root_func_idx.start === 1 || fail_check(exp)
 
     # ends with closing parenthesis
     exp[end] === ')' || fail_check(exp)
@@ -67,7 +77,7 @@ function parse_function_expression(exp::AbstractString)::Functor
     name = SubString(exp, 1, idx - 1)
     str_pending_exp = SubString(exp, idx + 1, lastindex(exp))
     log("func name : " * name * ";          pending exp after func name : " * str_pending_exp)
-    read(stdin, Char)
+    debug_pause()
 
     arr_arguments = []
     
@@ -116,28 +126,72 @@ function parse_function_expression(exp::AbstractString)::Functor
             log("  nested func : ", nested_func)
 
             # remove handled part
-            # TODO : is it correct approach for SuString type here?
+            # TODO : bug here in the case we have arguments after nested function
             str_pending_exp = replace(str_pending_exp, str_before_nested_func_name => "")
             str_pending_exp = replace(str_pending_exp, nested_func.func_string => "")
             log("  new pending exp : '" * str_pending_exp * "'")
             append!(arr_arguments, [nested_func])
 
-            read(stdin, Char)
+            debug_pause()
         end
     end
 
     throw(ArgumentError("Looks like something wrong with expression : '" * exp * "' or this method is buggy."))
 end
 
-function resolve_arguments(func::Functor, calc_cache::Dict)
-    # TODO
+function parse_possible_constraint_operand(op::AbstractString)  # :: int, float, string
+    
+    # int
+    ival = tryparse(Int64, op)
+    if ! isnothing(ival)
+        return ival
+    end
+
+    # float
+    fval = tryparse(Float64, op)
+    if ! isnothing(fval)
+        return fval
+    end
+
+    # string
+    quotesIdx = findfirst('"', op)
+    if ! isnothing(quotesIdx)
+        return String(replace('"' => "", op))
+    end
+
+    throw(ArgumentError("Some unknown operand here : '" * op * "'"))
 end
 
-function eval_functor_result(exp::Functor)
+function eval_functor_result(func::Functor, calc_cache::Dict)
+    log("====================")
+    log("input functor : ", func)
 
-    calc_cache = Dict()
+    cached = get(calc_cache, func.func_string, nothing)
+    if ! isnothing(cached)
+        log("  have value in cache : ", cached)
+        return cached
+    end
 
-    # TODO : recursive calculation
+    # TODO : I saw some clear method for that Type{Functor}
+    func_type = typeof(TreeParser.Functor("TODO", [], ""))
+    resolved_operands = []
+    for op in func.operands
+        if typeof(op) === func_type
+            val = eval_functor_result(op, calc_cache)
+            append!(resolved_operands, val)
+        else
+            opval = parse_possible_constraint_operand(op)
+            append!(resolved_operands, opval)
+        end
+    end
+    # TODO : use mutable struct?
+    #func.operands = resolved_operands
+    log("  resolved operands : ", resolved_operands)
+
+    result = invoke(func, resolved_operands)
+    calc_cache[func.func_string] = result
+
+    return result
 end
 
 end

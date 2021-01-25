@@ -2,6 +2,8 @@ a1 = 2
 
 f1(a, b)::Float64 = a / b
 
+f1(a) = "str_" * string(a)
+
 f2(a, b::Int64, c) = a + b + c
 
 f2(a) = a ^ 2
