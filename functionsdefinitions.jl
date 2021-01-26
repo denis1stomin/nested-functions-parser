@@ -16,9 +16,13 @@ f2() = 4
 
 f3() = 25
 
+f4(a, b) = a * b
+
 parse_str2int(s::String) = parse(Int64, s)
 
 function some_long_calc()::Real
-    sleep(10)
+    print("long calc... ")
+    sleep(5)
+    
     return 15
 end

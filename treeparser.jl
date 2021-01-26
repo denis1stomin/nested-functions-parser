@@ -5,6 +5,7 @@ include("functionsdefinitions.jl")
 SINGLE_FUNC_REGEX = r"(([^\(\)\s\,]+)\(([^\(\)]*?)\))"
 FUNC_NAME_REGEX = r"([^\s\,\(\)]+)\("
 
+# To enable logging change verbosity to something greater than zero
 log_verbosity = 0
 function log(args...)
     if (log_verbosity > 0)
@@ -18,9 +19,9 @@ function debug_pause()
 end
 
 struct Functor
-    func_name::AbstractString
+    func_name::Union{String, SubString}
     operands::Array{Any}
-    func_string::AbstractString
+    func_string::Union{String, SubString}
 end
 
 function invoke(functor::Functor, operands::Array{Any})
@@ -35,18 +36,7 @@ function invoke(functor::Functor, operands::Array{Any})
     return f(ops...)
 end
 
-function parse_function_arguments(str_args::AbstractString)::Array{Any}
-    if isnothing(str_args)
-        return []
-    end
-
-    str_arr = map(x -> strip(x, ' '), 
-        split(String(str_args), ',', keepempty=false))
-
-    return str_arr
-end
-
-function simple_expression_check(exp::AbstractString)
+function simple_expression_check(exp::Union{String, SubString})
     exp = strip(exp, ' ')
     fail_check(e) = throw(ArgumentError("Expression '" * e * "' does not look like valid nested functions."))
 
@@ -63,88 +53,84 @@ function simple_expression_check(exp::AbstractString)
     openers_cnt === openers_cnt || fail_check(exp)
 end
 
-function parse_function_expression(exp::AbstractString)::Functor
-    simple_expression_check(exp)
-
-    log("====================")
-    log("input exp : " * exp)
-
-    idx = findfirst('(', exp)
-    if isnothing(idx)
-        throw(ArgumentError("Expression is not a function: '" * exp * "'"))
-    end
-
-    name = SubString(exp, 1, idx - 1)
-    str_pending_exp = SubString(exp, idx + 1, lastindex(exp))
-    handled_exp_buf = name * '('
-    log("func name : " * name * ";          pending exp after func name : " * str_pending_exp)
-    debug_pause()
-
-    arr_arguments = []
-    
-    # one or more nested functions
-    while ! isnothing(str_pending_exp)
-        log("  --------------------")
-        log("  pending exp : '" * str_pending_exp * "'")
-        log("  --------------------")
-
-        first_nested_opener_idx = findfirst('(', str_pending_exp)
-        first_closer_idx = findfirst(')', str_pending_exp)
-        if isnothing(first_closer_idx)
-            throw(ArgumentError("Something wrong with expression? : '" * exp * "'"))
-        end
-
-        if isnothing(first_nested_opener_idx) || first_closer_idx < first_nested_opener_idx
-            log("  --- found a closer symbol at idx : ", first_closer_idx)
-            if (first_closer_idx > 1)
-                str_arguments = SubString(str_pending_exp, 1, first_closer_idx - 1)
-                handled_exp_buf = handled_exp_buf * str_arguments
-                log("  str arguments : '" * str_arguments * "'")
-                arg_part = parse_function_arguments(str_arguments)
-                log("  parsed arguments part : ", arg_part)
-                append!(arr_arguments, arg_part)
-            end
-            log("  all parsed arguments : ", arr_arguments)
-            
-            handled_exp_buf = handled_exp_buf * ')'
-            func =  Functor(name, arr_arguments, handled_exp_buf)
-            log("  returning functor : ", func)
-            return func
-        else
-            nested_func_name_idx = findfirst(FUNC_NAME_REGEX, str_pending_exp)
-            str_before_nested_func_name = SubString(str_pending_exp, 1, nested_func_name_idx.start - 1)
-
-            log("  str before nested func: '" * str_before_nested_func_name * "'")
-
-            if ! isnothing(str_before_nested_func_name)
-                args_part = parse_function_arguments(strip(str_before_nested_func_name, ' '))
-                arr_arguments = vcat(arr_arguments, args_part)
-            end
-            log("  currently parsed arguments : ", arr_arguments)
-
-            str_nested_exp = SubString(str_pending_exp, nested_func_name_idx.start, lastindex(str_pending_exp))
-            log("  nested func str : '" * str_nested_exp * "'")
-            nested_func = parse_function_expression(str_nested_exp)
-            log("  nested func : ", nested_func)
-
-            # remove handled part
-            # TODO : bug here in the case we have arguments after nested function
-            str_pending_exp = replace(str_pending_exp, str_before_nested_func_name => "")
-            handled_exp_buf = handled_exp_buf * str_before_nested_func_name
-            str_pending_exp = replace(str_pending_exp, nested_func.func_string => "")
-            handled_exp_buf = handled_exp_buf * nested_func.func_string
-
-            log("  new pending exp : '" * str_pending_exp * "'")
-            append!(arr_arguments, [nested_func])
-
-            debug_pause()
-        end
-    end
-
-    throw(ArgumentError("Looks like something wrong with expression : '" * exp * "' or this method is buggy."))
+mutable struct ExpressionReader
+    expression::String
+    current_idx::Int64
 end
 
-function parse_possible_constraint_operand(op::AbstractString)  # :: int, float, string
+function read_next_word(reader::ExpressionReader)::Union{SubString, Nothing}
+
+    if reader.current_idx > lastindex(reader.expression)
+        return nothing
+    end
+
+    start_idx = reader.current_idx
+    end_idx = reader.current_idx
+    
+    while true
+        sym = reader.current_idx > lastindex(reader.expression) ? nothing : reader.expression[reader.current_idx]
+        end_idx = reader.current_idx
+        reader.current_idx = reader.current_idx + 1
+
+        if isnothing(sym) || sym === ',' || sym === '(' || sym === ')'
+            break
+        end
+    end
+
+    return SubString(reader.expression, start_idx, end_idx)
+end
+
+function parse_function_expression_inner(func_name_word::Union{String, SubString}, reader::ExpressionReader)::Functor
+
+    function try_parse_operand!(word::Union{String, SubString}, operands::Array{Any})
+        op = word[1:end - 1]
+        if ! isempty(op)
+            append!(operands, [op])
+        end
+    end
+
+    func_name = func_name_word[1:end - 1]
+    str_func_exp = func_name_word
+    operands = []
+
+    while (w = read_next_word(reader)) !== nothing
+        str_func_exp = str_func_exp * func_name_word
+
+        if endswith(w, '(')         # nested function
+
+            nested_func = parse_function_expression_inner(w, reader)
+            str_func_exp = str_func_exp * nested_func.func_string
+            append!(operands, [nested_func])
+
+        elseif endswith(w, ')')    # function end
+
+            try_parse_operand!(w, operands)
+            result_func = Functor(func_name, operands, str_func_exp)
+
+            return result_func
+
+        elseif endswith(w, ',')    # another operand
+
+            try_parse_operand!(w, operands)
+        end
+    end
+
+    throw(ArgumentError(
+        "Looks like something wrong with expression : '" * reader.expression * "' or this method is buggy."))
+end
+
+function parse_function_expression(exp::Union{String, SubString})::Functor
+
+    simple_expression_check(exp)
+    exp = replace(exp, ' ' => "")
+
+    reader = ExpressionReader(exp, 1)
+    root_func_name_word = read_next_word(reader)
+
+    return parse_function_expression_inner(root_func_name_word, reader)
+end
+
+function parse_constraint_operand(op::Union{String, SubString})::Union{Int64, Float64, String}
     
     # int
     ival = tryparse(Int64, op)
@@ -161,7 +147,7 @@ function parse_possible_constraint_operand(op::AbstractString)  # :: int, float,
     # string
     quotesIdx = findfirst('"', op)
     if ! isnothing(quotesIdx)
-        return String(replace('"' => "", op))
+        return String(replace(op, '"' => ""))
     end
 
     throw(ArgumentError("Some unknown operand here : '" * op * "'"))
@@ -177,16 +163,14 @@ function eval_functor_result(func::Functor, calc_cache::Dict)
         return cached
     end
 
-    # TODO : I saw some clear method for that Type{Functor}
-    func_type = typeof(TreeParser.Functor("TODO", [], ""))
     resolved_operands = []
     for op in func.operands
-        if typeof(op) === func_type
+        if isa(op, Functor)
             val = eval_functor_result(op, calc_cache)
-            append!(resolved_operands, val)
+            append!(resolved_operands, [val])
         else
-            opval = parse_possible_constraint_operand(op)
-            append!(resolved_operands, opval)
+            opval = parse_constraint_operand(op)
+            append!(resolved_operands, [opval])
         end
     end
     # TODO : use mutable struct?

@@ -10,3 +10,8 @@ where
 ARG-i in [ int, float, string, FUNC ]
 FUNC  in [ FUNC-1, FUNC-2, ... FUNC-M ]
 ```
+
+### To start explore the code
+- Install Julia from https://julialang.org/downloads/
+- cd <this repo root>
+- run `julia treeparser.test.jl`
