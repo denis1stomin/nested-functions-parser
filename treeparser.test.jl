@@ -2,12 +2,6 @@ include("treeparser.jl")
 include("functionsdefinitions.jl")
 
 
-#parsed_exp = TreeParser.parse_function_expression("""f1(12, f2(parse_str2int("2"), f2(1), 3))""")
-#println("=== PARSED FUNCTOR TREE :")
-#println(parsed_exp)
-#exit()
-
-
 test_cases = [
     # "2"       # TODO : expected exception test
     "f2() "
