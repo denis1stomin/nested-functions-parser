@@ -18,22 +18,17 @@ function debug_pause()
     end
 end
 
-struct Functor
+mutable struct Functor
     func_name::Union{String, SubString}
     operands::Array{Any}
     func_string::Union{String, SubString}
 end
 
-function invoke(functor::Functor, operands::Array{Any})
+function invoke(functor::Functor)
     fsym = Symbol(functor.func_name)
     f = getfield(Main, fsym)
 
-    ops = operands
-    if isnothing(ops)
-        ops = functor.operands
-    end
-
-    return f(ops...)
+    return f(functor.operands...)
 end
 
 function simple_expression_check(exp::Union{String, SubString})
@@ -173,11 +168,11 @@ function eval_functor_result(func::Functor, calc_cache::Dict)
             append!(resolved_operands, [opval])
         end
     end
-    # TODO : use mutable struct?
-    #func.operands = resolved_operands
-    log("  resolved operands : ", resolved_operands)
 
-    result = invoke(func, resolved_operands)
+    func.operands = resolved_operands
+    log("  resolved operands : ", func.operands)
+
+    result = invoke(func)
     calc_cache[func.func_string] = result
 
     return result
