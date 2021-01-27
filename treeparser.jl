@@ -72,7 +72,7 @@ function read_next_word(reader::ExpressionReader)::Union{SubString, Nothing}
         end
 
         if sym === '"'
-            # find closing quotes
+            # find closing quotes (doesn't support nested quotes yet :))
             end_idx = findnext(x -> x === '"', reader.expression, reader.current_idx)
             if isnothing(end_idx)
                 throw(ArgumentError("Cannot find closing quotes for " * string(reader.current_idx - 1)))
