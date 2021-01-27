@@ -18,6 +18,8 @@ f3() = 25
 
 f4(a, b) = a * b
 
+f4(str::String) = length(str)
+
 parse_str2int(s::String) = parse(Int64, s)
 
 function some_long_calc()::Real

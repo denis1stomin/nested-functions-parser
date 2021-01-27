@@ -14,6 +14,7 @@ test_cases = [
     "f1(1000, f2(f3(), 9), 1, f4(20, 50))"
     """f1(12, f2(parse_str2int("2"), f2(1), 3))"""
     "f1(some_long_calc(), some_long_calc())"
+    """f4("a() + b")"""
 ]
 
 println("Starting " * string(length(test_cases)) * "tests.")
