@@ -98,6 +98,7 @@ function parse_function_expression_inner(func_name_word::Union{String, SubString
     operands = []
 
     while (w = read_next_word(reader)) !== nothing
+        w = strip(w, ' ')
         str_func_exp = str_func_exp * func_name_word
 
         if endswith(w, '(')         # nested function
@@ -126,7 +127,7 @@ end
 function parse_function_expression(exp::Union{String, SubString})::Functor
 
     simple_expression_check(exp)
-    exp = replace(exp, ' ' => "")
+    exp = strip(exp, ' ')
 
     reader = ExpressionReader(exp, 1)
     root_func_name_word = read_next_word(reader)
